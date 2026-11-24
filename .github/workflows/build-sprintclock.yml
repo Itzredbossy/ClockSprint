@@ -1,79 +1,43 @@
-
 name: Build SprintClock APK
-
 on:
   workflow_dispatch:
   push:
-    paths:
-      - 'SprintClock-source.zip'
-      - '.github/workflows/build-sprintclock.yml'
-
+    branches: [ main, master ]
 permissions:
   contents: read
   actions: read
-
 jobs:
   build:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Check out repository
+      - name: Check out source
         uses: actions/checkout@v4
-
-      - name: Extract Android project
+      - name: Detect project root
         run: |
-          set -euo pipefail
-          mkdir -p project
-          unzip -q SprintClock-source.zip -d project
-
-      - name: Fix ZXing scanner laser color
-        run: |
-          python3 - <<'PY'
-          from pathlib import Path
-          import re
-
-          layout = Path("project/app/src/main/res/layout/sprint_scanner.xml")
-
-          if not layout.is_file():
-              raise SystemExit(f"Missing file: {layout}")
-
-          xml = layout.read_text()
-
-          fixed, count = re.subn(
-              r'(zxing_viewfinder_laser\s*=\s*")false(")',
-              r'\1@android:color/transparent\2',
-              xml
-          )
-
-          if count != 1:
-              raise SystemExit(
-                  f"Expected one invalid laser color, found {count}"
-              )
-
-          layout.write_text(fixed)
-          print("ZXing laser color fixed.")
-
-          PY
-
+          if [ -f "project/app/build.gradle" ]; then
+            echo "PROJECT_DIR=project" >> $GITHUB_ENV
+          elif [ -f "app/build.gradle" ]; then
+            echo "PROJECT_DIR=." >> $GITHUB_ENV
+          else
+            echo "Missing app/build.gradle"
+            exit 1
+          fi
       - name: Set up Java 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
-
       - name: Set up Gradle 8.9
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
-
       - name: Build debug APK
-        working-directory: project
+        working-directory: ${{ env.PROJECT_DIR }}
         run: gradle --no-daemon assembleDebug
-
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: SprintClock-debug-apk
-          path: project/app/build/outputs/apk/debug/app-debug.apk
+          path: ${{ env.PROJECT_DIR }}/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           
