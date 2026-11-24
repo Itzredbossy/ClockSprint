@@ -26,6 +26,16 @@ jobs:
 
           echo "EXTRACTED FILES:"
           find source -maxdepth 4 -type f | head -100
+          
+      - name: Fix scanner XML color attribute
+        run: |
+          FILE="source/New Folder45/project/app/src/main/res/layout/sprint_scanner.xml"
+
+          sed -i 's/zxing_viewfinder_laser="false"/zxing_viewfinder_laser="#00000000"/g' "$FILE"
+
+          echo "Scanner XML patched:"
+          grep -n "zxing_viewfinder_laser" "$FILE"
+          
 
       - name: Locate Android project
         id: project
