@@ -4,9 +4,7 @@ name: Build SprintClock APK
 on:
   workflow_dispatch:
   push:
-    branches:
-      - main
-      - master
+    branches: [main, master]
 
 permissions:
   contents: read
@@ -19,16 +17,55 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Debug repository structure
+      - name: Extract Android project
         run: |
-          echo "ROOT:"
-          pwd
-          ls -la
+          sudo apt-get update -qq
+          sudo apt-get install -y unzip
 
-          echo "GRADLE FILES:"
-          find . -type f \( -name "settings.gradle" -o -name "settings.gradle.kts" -o -name "build.gradle" -o -name "build.gradle.kts" \) -print
+          unzip -q SprintClock-source.zip -d source
 
-          echo "ANDROID FILES:"
-          find . -name AndroidManifest.xml -print
-          find . -name sprint_scanner.xml -print
+          echo "EXTRACTED FILES:"
+          find source -maxdepth 4 -type f | head -100
+
+      - name: Locate Android project
+        id: project
+        run: |
+          PROJECT=$(find source -name settings.gradle -type f \
+            -printf '%h\n' | while read dir; do
+              if [ -f "$dir/app/build.gradle" ]; then
+                echo "$dir"
+                break
+              fi
+            done)
+
+          if [ -z "$PROJECT" ]; then
+            echo "Could not find Android project"
+            find source -name settings.gradle -o -name build.gradle
+            exit 1
+          fi
+
+          echo "dir=$PROJECT" >> "$GITHUB_OUTPUT"
+          echo "Found project: $PROJECT"
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Build APK
+        working-directory: ${{ steps.project.outputs.dir }}
+        run: gradle --no-daemon assembleDebug
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: SprintClock-debug-apk
+          path: ${{ steps.project.outputs.dir }}/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
           
