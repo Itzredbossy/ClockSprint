@@ -1,100 +1,66 @@
-
-name: Build SprintClock APK
+name: Extract Zip and Build APK
 
 on:
-  workflow_dispatch:
   push:
-    paths:
-      - '.github/workflows/build-apk.yml'
-
-permissions:
-  contents: read
-
-concurrency:
-  group: sprintclock-apk-${{ github.ref }}
-  cancel-in-progress: true
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
 
 jobs:
-  build:
-    name: Build Android APK
+  build-apk:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
 
     steps:
-      - name: Check out repository
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-
-      - name: Download app source ZIP
-        run: |
-          python -m pip install --upgrade pip gdown
-          gdown "https://drive.google.com/uc?id=1SFX0h2XkKERvS3r_cMlKM9jHh6itOZUM" -O source.zip
-          test -s source.zip
-          unzip -tq source.zip
-
-      - name: Extract source and locate Flutter project
-        shell: bash
+      - name: Extract source.zip
         run: |
           mkdir -p extracted
           unzip -q source.zip -d extracted
 
-          PROJECT_PUBSPEC="$(find extracted -type f -name pubspec.yaml -not -path '*/.dart_tool/*' -print -quit)"
-
-          if [ -z "$PROJECT_PUBSPEC" ]; then
-            echo "ERROR: No pubspec.yaml found in ZIP."
-            find extracted -maxdepth 4 -type f | head -200
-            exit 1
+          # If the zip contains a single wrapper folder, move its contents up one level
+          top_entries=$(find extracted -mindepth 1 -maxdepth 1 | wc -l)
+          if [ "$top_entries" -eq 1 ]; then
+            only_entry=$(find extracted -mindepth 1 -maxdepth 1)
+            if [ -d "$only_entry" ]; then
+              mv "$only_entry"/* "$only_entry"/.[!.]* extracted/ 2>/dev/null || true
+              rmdir "$only_entry"
+            fi
           fi
 
-          PROJECT_DIR="$(dirname "$PROJECT_PUBSPEC")"
-          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
-          echo "Found Flutter project: $PROJECT_DIR"
-
-      - name: Set up Java 17
+      - name: Set up Java
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '17'
+          java-version: "17"
 
-            - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
-        with:
-          accept-android-sdk-licenses: true
-          log-accepted-android-sdk-licenses: false
-          packages: ''
-
-      - name: Install Android SDK 35 and 36
-        run: |
-          sdkmanager "platforms;android-35" "platforms;android-36" "build-tools;35.0.0" "build-tools;36.0.0"
-
-      - name: Set up Flutter stable
+      - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
           channel: stable
           cache: true
 
-      - name: Show build environment
-        run: |
-          flutter --version
-          flutter doctor -v
-
       - name: Install dependencies
-        working-directory: ${{ env.PROJECT_DIR }}
+        working-directory: extracted
         run: flutter pub get
 
+      - name: Run static analysis and tests
+        working-directory: extracted
+        run: |
+          flutter analyze
+          flutter test
+
       - name: Build release APK
-        working-directory: ${{ env.PROJECT_DIR }}
+        working-directory: extracted
         run: flutter build apk --release
 
-      - name: Upload APK
+      - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: SprintClock-release-APK
-          path: ${{ env.PROJECT_DIR }}/build/app/outputs/flutter-apk/app-release.apk
-          if-no-files-found: error
-          retention-days: 30
+          name: sprint-timer-release-apk
+          path: extracted/build/app/outputs/flutter-apk/app-release.apk
           
