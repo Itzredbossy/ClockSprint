@@ -31,6 +31,50 @@ jobs:
             fi
           fi
 
+      - name: Update AGP, Kotlin, and Gradle wrapper
+        run: |
+          python3 - <<'EOF'
+          from pathlib import Path
+          import re
+
+          root = Path("extracted/android")
+
+          settings = root / "settings.gradle"
+          if settings.exists():
+              text = settings.read_text(encoding="utf-8")
+              text = re.sub(
+                  r'(id\s+["\']com\.android\.application["\']\s+version\s+["\'])[^"\']+(["\'])',
+                  r'\g<1>8.6.0\2',
+                  text,
+              )
+              text = re.sub(
+                  r'(id\s+["\']org\.jetbrains\.kotlin\.android["\']\s+version\s+["\'])[^"\']+(["\'])',
+                  r'\g<1>2.0.20\2',
+                  text,
+              )
+              settings.write_text(text, encoding="utf-8")
+
+          build_gradle = root / "build.gradle"
+          if build_gradle.exists():
+              text = build_gradle.read_text(encoding="utf-8")
+              text = re.sub(
+                  r'(com\.android\.tools\.build:gradle:)[^"\'\s]+',
+                  r'\g<1>8.6.0',
+                  text,
+              )
+              build_gradle.write_text(text, encoding="utf-8")
+
+          wrapper = root / "gradle/wrapper/gradle-wrapper.properties"
+          if wrapper.exists():
+              text = wrapper.read_text(encoding="utf-8")
+              text = re.sub(
+                  r'(distributionUrl\s*=\s*).*',
+                  r'\1https\\://services.gradle.org/distributions/gradle-8.8-all.zip',
+                  text,
+              )
+              wrapper.write_text(text, encoding="utf-8")
+          EOF
+
       - name: Set up Java
         uses: actions/setup-java@v4
         with:
