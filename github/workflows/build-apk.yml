@@ -1,0 +1,46 @@
+name: Build APK from source.zip
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'source.zip'
+      - '.github/workflows/build-apk.yml'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Extract source.zip
+        run: |
+          mkdir -p app
+          unzip -q source.zip -d app
+          test -f app/pubspec.yaml
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.5'
+          channel: stable
+          cache: true
+
+      - name: Pub get
+        working-directory: app
+        run: flutter pub get
+
+      - name: Build release APK
+        working-directory: app
+        run: flutter build apk --release --split-per-abi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sprint-timer-apk
+          path: app/build/app/outputs/flutter-apk/*.apk
+          retention-days: 30
