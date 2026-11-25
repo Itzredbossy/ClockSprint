@@ -1,0 +1,73 @@
+
+name: Build SprintClock APK
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - ".github/workflows/build-apk.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Download ZIP from Google Drive
+        run: |
+          python -m pip install --upgrade pip
+          pip install gdown
+          gdown --fuzzy "https://drive.google.com/file/d/1SFX0h2XkKERvS3r_cMlKM9jHh6itOZUM/view" -O source.zip
+          test -s source.zip
+          unzip -tq source.zip
+
+      - name: Extract and locate Flutter project
+        shell: bash
+        run: |
+          mkdir -p extracted
+          unzip -q source.zip -d extracted
+          PROJECT_DIR="$(find extracted -type f -name pubspec.yaml -printf '%h\n' | head -n 1)"
+          if [ -z "$PROJECT_DIR" ]; then
+            echo "::error::No Flutter pubspec.yaml found in ZIP."
+            find extracted -maxdepth 4 -type f | head -200
+            exit 1
+          fi
+          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.24.5"
+          channel: stable
+          cache: true
+
+      - name: Install dependencies
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: flutter pub get
+
+      - name: Build release APK
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: flutter build apk --release
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: sprintclock-release-apk
+          path: ${{ env.PROJECT_DIR }}/build/app/outputs/flutter-apk/*.apk
+          if-no-files-found: error
+          retention-days: 30
+          
