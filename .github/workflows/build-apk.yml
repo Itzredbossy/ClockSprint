@@ -1,0 +1,97 @@
+
+name: Build SprintClock APK
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/build-apk.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sprintclock-apk-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build Android APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Download app source ZIP
+        run: |
+          python -m pip install --upgrade pip gdown
+          gdown "https://drive.google.com/uc?id=1SFX0h2XkKERvS3r_cMlKM9jHh6itOZUM" -O source.zip
+          test -s source.zip
+          unzip -tq source.zip
+
+      - name: Extract source and locate Flutter project
+        shell: bash
+        run: |
+          mkdir -p extracted
+          unzip -q source.zip -d extracted
+
+          PROJECT_PUBSPEC="$(find extracted -type f -name pubspec.yaml -not -path '*/.dart_tool/*' -print -quit)"
+
+          if [ -z "$PROJECT_PUBSPEC" ]; then
+            echo "ERROR: No pubspec.yaml found in ZIP."
+            find extracted -maxdepth 4 -type f | head -200
+            exit 1
+          fi
+
+          PROJECT_DIR="$(dirname "$PROJECT_PUBSPEC")"
+          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
+          echo "Found Flutter project: $PROJECT_DIR"
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK
+        run: |
+          yes | sdkmanager --licenses >/dev/null
+          sdkmanager "platforms;android-35" "platforms;android-36" "build-tools;35.0.0" "build-tools;36.0.0"
+
+      - name: Set up Flutter stable
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Show build environment
+        run: |
+          flutter --version
+          flutter doctor -v
+
+      - name: Install dependencies
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: flutter pub get
+
+      - name: Build release APK
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: flutter build apk --release
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: SprintClock-release-APK
+          path: ${{ env.PROJECT_DIR }}/build/app/outputs/flutter-apk/app-release.apk
+          if-no-files-found: error
+          retention-days: 30
+          
