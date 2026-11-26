@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
   push:
     paths:
-      - "source-1.zip"
+      - "source-1-1.zip"
       - ".github/workflows/build-apk.yml"
 
 jobs:
@@ -16,16 +16,16 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Verify source-1.zip
+      - name: Verify source-1-1.zip
         run: |
           ls -la
-          test -f source-1.zip || { echo "source-1.zip missing at repo root"; exit 1; }
+          test -f source-1-1.zip || { echo "source-1-1.zip missing at repo root"; exit 1; }
 
-      - name: Extract source-1.zip
+      - name: Extract source-1-1.zip
         run: |
           rm -rf app
           mkdir -p app
-          unzip -q source-1.zip -d app
+          unzip -q source-1-1.zip -d app
           if [ "$(find app -mindepth 1 -maxdepth 1 -type d | wc -l)" -eq 1 ] \
              && [ "$(find app -mindepth 1 -maxdepth 1 -type f | wc -l)" -eq 0 ]; then
             top=$(find app -mindepth 1 -maxdepth 1 -type d | head -1)
