@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
   push:
     paths:
-      - "source-1-1.zip"
+      - "source-1.zip"
       - ".github/workflows/build-apk.yml"
 
 jobs:
@@ -16,53 +16,31 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Verify source-1-1.zip exists
+      - name: Verify source-1.zip
         run: |
-          echo "Repo root:"
           ls -la
-          if [ ! -f source-1-1.zip ]; then
-            echo "::error::source-1-1.zip not found in repository root"
-            exit 1
-          fi
-          ls -lh source-1-1.zip
+          test -f source-1.zip || { echo "source-1.zip missing at repo root"; exit 1; }
 
-      - name: Extract source-1-1.zip
+      - name: Extract source-1.zip
         run: |
           rm -rf app
           mkdir -p app
-          unzip -q source-1-1.zip -d app
-
-          count=$(find app -mindepth 1 -maxdepth 1 | wc -l)
-          dirs=$(find app -mindepth 1 -maxdepth 1 -type d | wc -l)
-          files=$(find app -mindepth 1 -maxdepth 1 -type f | wc -l)
-          if [ "$dirs" -eq 1 ] && [ "$files" -eq 0 ]; then
+          unzip -q source-1.zip -d app
+          if [ "$(find app -mindepth 1 -maxdepth 1 -type d | wc -l)" -eq 1 ] \
+             && [ "$(find app -mindepth 1 -maxdepth 1 -type f | wc -l)" -eq 0 ]; then
             top=$(find app -mindepth 1 -maxdepth 1 -type d | head -1)
-            echo "Flattening folder: $top"
             shopt -s dotglob nullglob
             mv "$top"/* app/
-            rmdir "$top" || true
+            rmdir "$top" 2>/dev/null || true
           fi
-
-          echo "Extracted tree:"
           ls -la app
-          if [ ! -f app/pubspec.yaml ]; then
-            echo "::error::pubspec.yaml not found after extract"
-            find app -name pubspec.yaml
-            exit 1
-          fi
+          test -f app/pubspec.yaml
 
       - name: Set up Java 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: "17"
-
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
-
-      - name: Accept Android licenses
-        run: |
-          yes | sdkmanager --licenses >/dev/null || true
 
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
@@ -71,8 +49,17 @@ jobs:
           channel: stable
           cache: true
 
-      - name: Flutter doctor
-        run: flutter doctor -v
+      - name: Accept Android licenses (non-interactive)
+        run: |
+          export ANDROID_SDK_ROOT="\( {ANDROID_SDK_ROOT:- \){ANDROID_HOME:-/usr/local/lib/android/sdk}}"
+          export ANDROID_HOME="$ANDROID_SDK_ROOT"
+          mkdir -p "$ANDROID_HOME/licenses"
+          echo -e "24333f8a63b6825ea9c5514f07c9298f6a79b83\n" > "$ANDROID_HOME/licenses/android-sdk-license"
+          echo -e "84831b9409646a918e30573bab4c9c91346d8abd\n" > "$ANDROID_HOME/licenses/android-sdk-preview-license"
+          echo -e "d56f5187479451be63d0bf35cd44fdbb0a7a7e79\n" > "$ANDROID_HOME/licenses/android-googletv-license"
+          echo -e "601085b94cd77f0b54ff86406957099ebe79c4d6\n" > "$ANDROID_HOME/licenses/android-google-gdk-license"
+          echo -e "33b6a2b64607f11b759f320ef9dff4ae5c47d97a\n" > "$ANDROID_HOME/licenses/google-gdk-license"
+          echo -e "e9acab5b5f4427036d7bfba46269cfa6bfe9366b\n" > "$ANDROID_HOME/licenses/mips-android-sysimage-license"
 
       - name: Get packages
         working-directory: app
@@ -80,11 +67,10 @@ jobs:
 
       - name: Build release APK
         working-directory: app
-        run: flutter build apk --release
-
-      - name: List APK
         run: |
-          find app/build/app/outputs -name "*.apk" -exec ls -lh {} \;
+          export ANDROID_SDK_ROOT="\( {ANDROID_SDK_ROOT:- \){ANDROID_HOME:-/usr/local/lib/android/sdk}}"
+          export ANDROID_HOME="$ANDROID_SDK_ROOT"
+          flutter build apk --release
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
