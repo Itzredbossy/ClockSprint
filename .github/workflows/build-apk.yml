@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
   push:
     paths:
-      - "source-1.zip"
+      - "source-1-1.zip"
       - ".github/workflows/build-apk.yml"
 
 jobs:
@@ -16,21 +16,21 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Verify source-1.zip exists
+      - name: Verify source-1-1.zip exists
         run: |
           echo "Repo root:"
           ls -la
-          if [ ! -f source-1.zip ]; then
-            echo "::error::source-1.zip not found in repository root"
+          if [ ! -f source-1-1.zip ]; then
+            echo "::error::source-1-1.zip not found in repository root"
             exit 1
           fi
-          ls -lh source-1.zip
+          ls -lh source-1-1.zip
 
-      - name: Extract source-1.zip
+      - name: Extract source-1-1.zip
         run: |
           rm -rf app
           mkdir -p app
-          unzip -q source-1.zip -d app
+          unzip -q source-1-1.zip -d app
 
           count=$(find app -mindepth 1 -maxdepth 1 | wc -l)
           dirs=$(find app -mindepth 1 -maxdepth 1 -type d | wc -l)
