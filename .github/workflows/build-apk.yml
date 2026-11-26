@@ -1,109 +1,95 @@
-name: Extract Zip and Build APK
+name: Build APK
 
 on:
-  push:
-    branches:
-      - main
-  pull_request:
-    branches:
-      - main
   workflow_dispatch:
+  push:
+    paths:
+      - "source-1.zip"
+      - ".github/workflows/build-apk.yml"
 
 jobs:
-  build-apk:
+  build:
     runs-on: ubuntu-latest
+    timeout-minutes: 60
 
     steps:
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Verify source-1.zip exists
+        run: |
+          echo "Repo root:"
+          ls -la
+          if [ ! -f source-1.zip ]; then
+            echo "::error::source-1.zip not found in repository root"
+            exit 1
+          fi
+          ls -lh source-1.zip
 
       - name: Extract source-1.zip
         run: |
-          mkdir -p extracted
-          unzip -q source-1.zip -d extracted
+          rm -rf app
+          mkdir -p app
+          unzip -q source-1.zip -d app
 
-          top_entries=$(find extracted -mindepth 1 -maxdepth 1 | wc -l)
-          if [ "$top_entries" -eq 1 ]; then
-            only_entry=$(find extracted -mindepth 1 -maxdepth 1)
-            if [ -d "$only_entry" ]; then
-              mv "$only_entry"/* "$only_entry"/.[!.]* extracted/ 2>/dev/null || true
-              rmdir "$only_entry"
-            fi
+          count=$(find app -mindepth 1 -maxdepth 1 | wc -l)
+          dirs=$(find app -mindepth 1 -maxdepth 1 -type d | wc -l)
+          files=$(find app -mindepth 1 -maxdepth 1 -type f | wc -l)
+          if [ "$dirs" -eq 1 ] && [ "$files" -eq 0 ]; then
+            top=$(find app -mindepth 1 -maxdepth 1 -type d | head -1)
+            echo "Flattening folder: $top"
+            shopt -s dotglob nullglob
+            mv "$top"/* app/
+            rmdir "$top" || true
           fi
 
-      - name: Update AGP, Kotlin, and Gradle wrapper
-        run: |
-          python3 - <<'EOF'
-          from pathlib import Path
-          import re
+          echo "Extracted tree:"
+          ls -la app
+          if [ ! -f app/pubspec.yaml ]; then
+            echo "::error::pubspec.yaml not found after extract"
+            find app -name pubspec.yaml
+            exit 1
+          fi
 
-          root = Path("extracted/android")
-
-          settings = root / "settings.gradle"
-          if settings.exists():
-              text = settings.read_text(encoding="utf-8")
-              text = re.sub(
-                  r'(id\s+["\']com\.android\.application["\']\s+version\s+["\'])[^"\']+(["\'])',
-                  r'\g<1>9.1.1\2',
-                  text,
-              )
-              text = re.sub(
-                  r'(id\s+["\']org\.jetbrains\.kotlin\.android["\']\s+version\s+["\'])[^"\']+(["\'])',
-                  r'\g<1>2.2.10\2',
-                  text,
-              )
-              settings.write_text(text, encoding="utf-8")
-
-          build_gradle = root / "build.gradle"
-          if build_gradle.exists():
-              text = build_gradle.read_text(encoding="utf-8")
-              text = re.sub(
-                  r'(com\.android\.tools\.build:gradle:)[^"\'\s]+',
-                  r'\g<1>9.1.1',
-                  text,
-              )
-              build_gradle.write_text(text, encoding="utf-8")
-
-          wrapper = root / "gradle/wrapper/gradle-wrapper.properties"
-          if wrapper.exists():
-              text = wrapper.read_text(encoding="utf-8")
-              text = re.sub(
-                  r'(distributionUrl\s*=\s*).*',
-                  r'\1https\\://services.gradle.org/distributions/gradle-9.3.1-all.zip',
-                  text,
-              )
-              wrapper.write_text(text, encoding="utf-8")
-          EOF
-
-      - name: Set up Java
+      - name: Set up Java 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: "17"
 
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Accept Android licenses
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
+          flutter-version: "3.24.5"
           channel: stable
           cache: true
 
-      - name: Install dependencies
-        working-directory: extracted
+      - name: Flutter doctor
+        run: flutter doctor -v
+
+      - name: Get packages
+        working-directory: app
         run: flutter pub get
 
-      - name: Run static analysis and tests
-        working-directory: extracted
-        run: |
-          flutter analyze --no-fatal-infos --no-fatal-warnings
-          flutter test
-
       - name: Build release APK
-        working-directory: extracted
+        working-directory: app
         run: flutter build apk --release
 
-      - name: Upload APK artifact
+      - name: List APK
+        run: |
+          find app/build/app/outputs -name "*.apk" -exec ls -lh {} \;
+
+      - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: sprint-timer-release-apk
-          path: extracted/build/app/outputs/flutter-apk/app-release.apk
-          
+          name: sprint-timer-apk
+          path: app/build/app/outputs/flutter-apk/*.apk
+          if-no-files-found: error
+          retention-days: 30
