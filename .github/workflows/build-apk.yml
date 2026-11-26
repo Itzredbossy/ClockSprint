@@ -17,10 +17,10 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Extract source.zip
+      - name: Extract source-1.zip
         run: |
           mkdir -p extracted
-          unzip -q source.zip -d extracted
+          unzip -q source-1.zip -d extracted
 
           top_entries=$(find extracted -mindepth 1 -maxdepth 1 | wc -l)
           if [ "$top_entries" -eq 1 ]; then
